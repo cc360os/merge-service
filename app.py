@@ -1,10 +1,13 @@
 import base64, os, subprocess, tempfile, hmac
 import requests
+from urllib.parse import urlparse
 from flask import Flask, request, send_file, jsonify
 
 app = Flask(__name__)
 TOKEN = os.environ.get("MERGE_TOKEN", "")
 MAX_BYTES = 60 * 1024 * 1024  # refuse videos bigger than 60 MB
+# Only download videos from these hosts (comma-separated env var to change)
+ALLOWED_HOSTS = set(h.strip() for h in os.environ.get("ALLOWED_VIDEO_HOSTS", "tempfile.aiquickdraw.com").split(",") if h.strip())
 
 
 def duration(path):
@@ -31,12 +34,16 @@ def merge():
     audio_b64 = body.get("audio_b64", "")
     if not video_url.startswith("https://") or not audio_b64:
         return jsonify(error="video_url (https) and audio_b64 are required"), 400
+    if urlparse(video_url).hostname not in ALLOWED_HOSTS:
+        return jsonify(error="video host not allowed"), 400
 
     with tempfile.TemporaryDirectory() as tmp:
         vpath, apath, opath = (os.path.join(tmp, n) for n in ("v.mp4", "a.wav", "out.mp4"))
         try:
             r = requests.get(video_url, timeout=60, stream=True)
             r.raise_for_status()
+            if urlparse(r.url).hostname not in ALLOWED_HOSTS:
+                return jsonify(error="redirected to a host that is not allowed"), 400
             size = 0
             with open(vpath, "wb") as f:
                 for chunk in r.iter_content(1 << 20):
