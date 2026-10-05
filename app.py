@@ -65,7 +65,11 @@ def merge():
         filters.append("apad")
         cmd = ["ffmpeg", "-y", "-i", vpath, "-i", apath,
                "-map", "0:v:0", "-map", "1:a:0",
-               "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+               # Re-encode to the most compatible format for Telegram apps:
+               # H.264 High / yuv420p video, AAC-LC 44.1 kHz stereo audio.
+               "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+               "-profile:v", "high", "-level", "4.0", "-pix_fmt", "yuv420p",
+               "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2",
                "-af", ",".join(filters), "-t", f"{vdur:.3f}",
                "-movflags", "+faststart", opath]
         p = subprocess.run(cmd, capture_output=True, text=True)
